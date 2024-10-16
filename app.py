@@ -105,6 +105,10 @@ def index():
 
     return render_template("index.html", polls=polls, my_polls=my_polls)
 
+@app.route("/health")
+def health_check():
+    return "OK", 200
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
