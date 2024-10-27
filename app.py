@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__, template_folder="templates")
@@ -18,6 +19,7 @@ app = Flask(__name__, template_folder="templates")
 # Configure session
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
+app.secret_key = os.environ.get("SECRET_KEY", "default-secret-key")
 Session(app)
 
 # Initialize Bcrypt for password hashing
@@ -25,16 +27,10 @@ bcrypt = Bcrypt(app)
 
 # AWS S3 Configuration
 S3_BUCKET = os.environ.get("S3_BUCKET")
-S3_KEY = os.environ.get("AWS_ACCESS_KEY_ID")
-S3_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY")
 S3_REGION = os.environ.get("AWS_DEFAULT_REGION")
 
-s3_client = boto3.client(
-    's3',
-    region_name=S3_REGION,
-    aws_access_key_id=S3_KEY,
-    aws_secret_access_key=S3_SECRET
-)
+# Initialize S3 client (relying on IAM role for credentials)
+s3_client = boto3.client('s3', region_name=S3_REGION)
 
 # Allowed file extensions for uploads
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
@@ -58,11 +54,19 @@ def admin_required(f):
 # Database connection function
 def get_db():
     if 'db' not in g:
+        db_host = os.environ.get('DB_HOST')
+        db_user = os.environ.get('DB_USER')
+        db_password = os.environ.get('DB_PASSWORD')
+        db_name = os.environ.get('DB_NAME')
+
+        # Log the database host
+        logger.debug(f"Connecting to database at {db_host}")
+
         g.db = pymysql.connect(
-            host=os.environ.get('DB_HOST'),
-            user=os.environ.get('DB_USER'),
-            password=os.environ.get('DB_PASSWORD'),
-            database=os.environ.get('DB_NAME'),
+            host=db_host,
+            user=db_user,
+            password=db_password,
+            database=db_name,
             cursorclass=pymysql.cursors.DictCursor
         )
     return g.db
@@ -74,32 +78,28 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
-# Initialize tables before each request
-@app.before_request
+# Initialize tables before first request
+@app.before_first_request
 def initialize_tables():
-    # Initialize all tables in the database
     db = get_db()
     cursor = db.cursor()
-    # Users table
+    # Create tables if they do not exist
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         email VARCHAR(255) NOT NULL UNIQUE,
                         password VARCHAR(255) NOT NULL,
                         is_admin TINYINT DEFAULT 0)''')
-    # Polls table
     cursor.execute('''CREATE TABLE IF NOT EXISTS polls (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         poll TEXT NOT NULL,
                         creator_id INT NOT NULL,
                         FOREIGN KEY (creator_id) REFERENCES users(id))''')
-    # Options table
     cursor.execute('''CREATE TABLE IF NOT EXISTS options (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         poll_id INT NOT NULL,
                         option_text TEXT NOT NULL,
                         votes INT DEFAULT 0,
                         FOREIGN KEY (poll_id) REFERENCES polls(id))''')
-    # Comments table
     cursor.execute('''CREATE TABLE IF NOT EXISTS comments (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         poll_id INT NOT NULL,
@@ -110,7 +110,6 @@ def initialize_tables():
                         FOREIGN KEY (poll_id) REFERENCES polls(id),
                         FOREIGN KEY (user_id) REFERENCES users(id),
                         FOREIGN KEY (parent_comment_id) REFERENCES comments(id))''')
-    # Votes table
     cursor.execute('''CREATE TABLE IF NOT EXISTS votes (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         poll_id INT NOT NULL,
@@ -126,7 +125,6 @@ def initialize_tables():
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 # Routes
 
 # Home route (index)
@@ -385,7 +383,6 @@ def delete_poll(poll_id):
     db.commit()
     return redirect(url_for("admin_dashboard"))
 
-# File upload route (Example of saving data to S3)
 @app.route("/upload", methods=["GET", "POST"])
 def upload_file():
     if "user_id" not in session:
@@ -412,6 +409,11 @@ def upload_file():
             return f"File uploaded successfully. Accessible at {file_url}"
 
     return render_template("upload.html")
+
+# Health check route for ALB
+@app.route("/health")
+def health():
+    return "OK", 200
 
 # 404 error handler
 @app.errorhandler(404)
