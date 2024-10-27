@@ -4,10 +4,10 @@
     <!-- Meta Tags -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - Polling App</title>
-    <meta name="description" content="Create a new account to participate in polls on Polling App.">
-    <meta property="og:title" content="Register - Polling App">
-    <meta property="og:description" content="Create a new account to participate in polls on Polling App.">
+    <title>Create New Poll</title>
+    <meta name="description" content="Create a new poll to gather opinions from others.">
+    <meta property="og:title" content="Create New Poll - Polling App">
+    <meta property="og:description" content="Create a new poll to gather opinions from others.">
 
     <!-- Favicon -->
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
@@ -44,13 +44,13 @@
                     </li>
                     {% else %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('login') }}">
-                            <i class="bi bi-box-arrow-in-right"></i> Login
+                        <a class="nav-link" href="{{ url_for('register') }}">
+                            <i class="bi bi-pencil-square"></i> Register
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="{{ url_for('register') }}">
-                            <i class="bi bi-pencil-square"></i> Register
+                        <a class="nav-link" href="{{ url_for('login') }}">
+                            <i class="bi bi-box-arrow-in-right"></i> Login
                         </a>
                     </li>
                     {% endif %}
@@ -59,67 +59,68 @@
         </div>
     </nav>
 
-    <!-- Register Form -->
+    <!-- Create Poll Form -->
     <div class="container my-5">
-        <div class="row justify-content-center">
-            <div class="col-md-6">
-                <div class="poll-container p-4">
-                    <h2 class="text-center mb-4">Register</h2>
-                    
-                    <!-- Display Error Message -->
-                    {% if error %}
-                    <div class="alert alert-danger" role="alert">
-                        {{ error }}
-                    </div>
-                    {% endif %}
-                    
-                    <form action="{{ url_for('register') }}" method="post">
-                        <div class="form-floating mb-3">
-                            <input type="email" class="form-control" name="email" id="email" placeholder="Email" required autocapitalize="off">
-                            <label for="email"><i class="bi bi-envelope-fill"></i> Email</label>
-                        </div>
-                        <div class="form-floating mb-4 position-relative">
-                            <input type="password" class="form-control" name="password" id="password" placeholder="Password" required>
-                            <label for="password"><i class="bi bi-lock-fill"></i> Password</label>
-                            <i class="bi bi-eye-slash" id="togglePassword" style="cursor: pointer; position: absolute; right: 20px; top: 10px;"></i>
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-pencil-square"></i> Register
-                        </button>
-                    </form>
-                    
-                    <!-- Login option -->
-                    <div class="text-center mt-3">
-                        <p>Already have an account? <a href="{{ url_for('login') }}">Login here</a></p>
-                    </div>
+        <h2 class="text-center mb-4">Create New Poll</h2>
+        <form action="{{ url_for('create_poll') }}" method="post">
+            <div class="form-floating mb-4">
+                <input type="text" class="form-control" name="poll" id="pollInput" placeholder="Poll Question" required>
+                <label for="pollInput"><i class="bi bi-question-circle"></i> Poll Question</label>
+            </div>
+            <div id="options">
+                <div class="form-floating mb-3 option-group">
+                    <input type="text" class="form-control" name="options[]" id="option1" placeholder="Option 1" required>
+                    <label for="option1">Option 1</label>
+                </div>
+                <div class="form-floating mb-3 option-group">
+                    <input type="text" class="form-control" name="options[]" id="option2" placeholder="Option 2" required>
+                    <label for="option2">Option 2</label>
                 </div>
             </div>
-        </div>
+            <button type="button" class="btn btn-outline-secondary mb-4" onclick="addOption()">
+                <i class="bi bi-plus-circle"></i> Add Another Option
+            </button>
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-check-circle"></i> Create Poll
+            </button>
+        </form>
     </div>
 
     <!-- Footer -->
     <footer class="bg-light text-center py-4 mt-5">
         <div class="container">
-            <p class="mb-0">&copy; <span id="current-year"></span> Polling App. All rights reserved.</p>
+            <p class="mb-0">&copy; {{ current_year }} Polling App. All rights reserved.</p>
         </div>
     </footer>
 
-    <!-- Bootstrap JS and Dependencies -->
+    <!-- Bootstrap JS and Custom JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- JavaScript for Dynamic Year and Password Toggle -->
+    <!-- Custom JavaScript -->
     <script>
-        document.getElementById('current-year').textContent = new Date().getFullYear();
+        let optionCount = 2;
+        function addOption() {
+            optionCount++;
+            const optionsDiv = document.getElementById("options");
+            const optionGroup = document.createElement("div");
+            optionGroup.className = "form-floating mb-3 option-group";
 
-        const togglePassword = document.querySelector('#togglePassword');
-        const password = document.querySelector('#password');
+            const input = document.createElement("input");
+            input.type = "text";
+            input.name = "options[]";
+            input.className = "form-control";
+            input.id = `option${optionCount}`;
+            input.placeholder = `Option ${optionCount}`;
+            input.required = true;
 
-        togglePassword.addEventListener('click', function (e) {
-            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
-            password.setAttribute('type', type);
-            this.classList.toggle('bi-eye');
-            this.classList.toggle('bi-eye-slash');
-        });
+            const label = document.createElement("label");
+            label.htmlFor = `option${optionCount}`;
+            label.textContent = `Option ${optionCount}`;
+
+            optionGroup.appendChild(input);
+            optionGroup.appendChild(label);
+            optionsDiv.appendChild(optionGroup);
+        }
     </script>
 </body>
 </html>
