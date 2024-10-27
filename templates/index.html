@@ -89,7 +89,7 @@
                 <div class="card mb-4 h-100">
                     <div class="card-body d-flex flex-column">
                         <h5 class="card-title">{{ poll['poll'] }}</h5>
-                        <p class="card-text">by {{ poll['creator_username'] }}</p>
+                        <p class="card-text">by {{ poll['creator_email'] }}</p>
                         <a href="{{ url_for('polls', id=poll['id']) }}" class="btn btn-primary mt-auto">
                             <i class="bi bi-eye"></i> View Poll
                         </a>
