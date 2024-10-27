@@ -100,7 +100,7 @@
                     <tr>
                         <th scope="row">{{ poll['id'] }}</th>
                         <td>{{ poll['poll'] }}</td>
-                        <td>{{ poll['creator_username'] }}</td>
+                        <td>{{ poll['creator_email'] }}</td>
                         <td class="text-center">
                             <a href="{{ url_for('polls', id=poll['id']) }}" class="btn btn-sm btn-outline-info me-2">
                                 <i class="bi bi-eye"></i> View
@@ -124,7 +124,7 @@
                 <thead class="table-dark">
                     <tr>
                         <th scope="col">ID</th>
-                        <th scope="col">Username</th>
+                        <th scope="col">email</th>
                         <th scope="col">Admin</th>
                         <th scope="col" class="text-center">Actions</th>
                     </tr>
@@ -133,7 +133,7 @@
                     {% for user in users %}
                     <tr>
                         <th scope="row">{{ user['id'] }}</th>
-                        <td>{{ user['username'] }}</td>
+                        <td>{{ user['email'] }}</td>
                         <td>{{ "Yes" if user['is_admin'] == 1 else "No" }}</td>
                         <td class="text-center">
                             <!-- Prevent the admin from deleting themselves -->
