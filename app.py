@@ -163,11 +163,24 @@ def register():
                 cursor = db.cursor()
                 cursor.execute("INSERT INTO users (email, password) VALUES (%s, %s)", (email, hashed_password))
                 db.commit()
+
+                # Invoke Lambda Function
+                lambda_client = boto3.client('lambda', region_name=os.environ.get('AWS_DEFAULT_REGION'))
+
+                payload = {'email': email}
+
+                response = lambda_client.invoke(
+                    FunctionName='welcome_email_function',
+                    InvocationType='Event',
+                    Payload=json.dumps(payload)
+                )
+
                 return redirect(url_for("login"))
             except pymysql.err.IntegrityError:
                 error = "Email already exists. Please use a different one."
 
     return render_template("register.html", error=error)
+
 
 # Login route
 @app.route("/login", methods=["GET", "POST"])
