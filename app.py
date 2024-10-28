@@ -8,6 +8,7 @@ from flask_bcrypt import Bcrypt
 from flask_session import Session
 from functools import wraps
 from werkzeug.utils import secure_filename
+import json
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
