@@ -60,16 +60,20 @@ def get_db():
         db_password = os.environ.get('DB_PASSWORD')
         db_name = os.environ.get('DB_NAME')
 
-        # Log the database host
-        logger.debug(f"Connecting to database at {db_host}")
+        # Log the database host and other details (ensure not to log sensitive info in production)
+        logger.debug(f"Connecting to database at {db_host} with user {db_user}")
 
-        g.db = pymysql.connect(
-            host=db_host,
-            user=db_user,
-            password=db_password,
-            database=db_name,
-            cursorclass=pymysql.cursors.DictCursor
-        )
+        try:
+            g.db = pymysql.connect(
+                host=db_host,
+                user=db_user,
+                password=db_password,
+                database=db_name,
+                cursorclass=pymysql.cursors.DictCursor
+            )
+        except pymysql.err.OperationalError as e:
+            logger.error(f"Error connecting to the database: {e}")
+            raise e
     return g.db
 
 # Close the database connection after each request
