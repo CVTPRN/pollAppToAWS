@@ -3,11 +3,11 @@ variable "aws_region" {
 }
 
 variable "access_key" {
-  default = "AKIARHQBNDNVZD4DPXEU"
+  default = "X"
 }
 
 variable "secret_key" {
-  default = "9W6msLr7EnHieLDuxAFj6gqzAmQXHJGADqwQ7e/e"
+  default = "X"
 }
 
 variable "db_username" {
