@@ -172,7 +172,7 @@ def register():
 
                 # Invoke Lambda Function
                 try:
-                    lambda_client = boto3.client('lambda', region_name='eu-west-1')
+                    lambda_client = boto3.client('lambda', region_name='eu-central-1')
 
                     payload = {'recipient_email': email}
 
