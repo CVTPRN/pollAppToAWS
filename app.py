@@ -9,6 +9,7 @@ from flask_session import Session
 from functools import wraps
 from werkzeug.utils import secure_filename
 import json
+import botocore
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG)
@@ -170,15 +171,21 @@ def register():
                 db.commit()
 
                 # Invoke Lambda Function
-                lambda_client = boto3.client('lambda', region_name=os.environ.get('AWS_DEFAULT_REGION'))
+                try:
+                    lambda_client = boto3.client('lambda', region_name='eu-west-1')
 
-                payload = {'email': email}
+                    payload = {'recipient_email': email}
 
-                response = lambda_client.invoke(
-                    FunctionName='welcome_email_function',
-                    InvocationType='Event',
-                    Payload=json.dumps(payload)
-                )
+                    response = lambda_client.invoke(
+                        FunctionName='welcome_email_function',
+                        InvocationType='Event',
+                        Payload=json.dumps(payload)
+                    )
+
+                    logging.info(f"Lambda function invoked successfully: {response}")
+                except botocore.exceptions.ClientError as e:
+                    logging.error(f"Error invoking Lambda function: {e}")
+                    # Handle the error as needed
 
                 return redirect(url_for("login"))
             except pymysql.err.IntegrityError:
