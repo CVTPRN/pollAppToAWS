@@ -181,6 +181,12 @@ def register():
                         InvocationType='Event',
                         Payload=json.dumps(payload)
                     )
+                    
+                    response = lambda_client.invoke(
+                        FunctionName='registration_counter_function',
+                        InvocationType='Event',
+                        Payload=json.dumps({})
+                    )
 
                     logging.info(f"Lambda function invoked successfully: {response}")
                 except botocore.exceptions.ClientError as e:
