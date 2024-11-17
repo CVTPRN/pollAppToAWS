@@ -65,7 +65,7 @@
     <!-- Poll Details -->
     <div class="container my-5">
         <div class="poll-container p-4">
-            <h3 class="mb-4">{{ poll['poll'] }} <small class="text-muted">by {{ poll['creator_email'] }}</small></h3>
+            <h3 class="mb-4">{{ poll['poll'] }} <small class="text-muted">by {{ poll['email'] }}</small></h3>
             <!-- Poll Options -->
             <div class="list-group">
                 {% for option in options %}
