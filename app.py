@@ -35,7 +35,7 @@ S3_REGION = os.environ.get("AWS_DEFAULT_REGION")
 s3_client = boto3.client('s3', region_name=S3_REGION)
 
 # Allowed file extensions for uploads
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'csv'}
 
 # Admin-required decorator
 def admin_required(f):
