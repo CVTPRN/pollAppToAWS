@@ -3,19 +3,19 @@ variable "aws_region" {
 }
 
 variable "access_key" {
-  default = "X"
+  default = "your_access_key"
 }
 
 variable "secret_key" {
-  default = "X"
+  default = "your_secret_key"
 }
 
 variable "db_username" {
-  default = "admin"
+  default = "admin_username"
 }
 
 variable "db_password" {
-  default = "N3lopjad!"
+  default = "Strong_Password"
 }
 
 variable "public_key_path" {
@@ -31,5 +31,5 @@ variable "s3_bucket_name" {
 }
 
 variable "sender_email" {
-  default = "meszaros@regomeszaros.com"
+  default = "sender_email@email.com"
 }
