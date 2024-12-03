@@ -1,0 +1,1 @@
+pulumi config set aws:region eu-central-1 pulumi config set db_username admin pulumi config set --secret db_password Strong_password pulumi config set public_key_path ~/.ssh/awspollapp_rsa.pub pulumi config set s3_bucket_name s3bucketpollapp pulumi config set sender_email x@gmail.com
