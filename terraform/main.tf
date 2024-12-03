@@ -1,9 +1,9 @@
-# Get Available Availability Zones
 data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# VPC Creation
+# VPC and Networking
+## VPC Creation
 resource "aws_vpc" "main" {
   cidr_block = "10.1.0.0/16"
 
@@ -12,7 +12,8 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Public Subnets
+## Subnets
+### Public Subnets
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
@@ -25,7 +26,7 @@ resource "aws_subnet" "public" {
   }
 }
 
-# Private Subnets
+### Private Subnets
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = aws_vpc.main.id
@@ -37,7 +38,7 @@ resource "aws_subnet" "private" {
   }
 }
 
-# Internet Gateway
+## Internet Gateway
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -46,7 +47,8 @@ resource "aws_internet_gateway" "igw" {
   }
 }
 
-# Public Route Table
+## Route Tables
+### Public Route Table
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -60,14 +62,15 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Associate Route Table with Public Subnets
+### Associate Route Table with Public Subnets
 resource "aws_route_table_association" "public" {
   count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
 
-# Security Group for ALB
+# Security Groups
+## ALB Security Group
 resource "aws_security_group" "alb_sg" {
   name        = "alb_security_group"
   description = "Allow inbound HTTP traffic"
@@ -94,7 +97,7 @@ resource "aws_security_group" "alb_sg" {
   }
 }
 
-# Security Group for EC2 Instance
+## EC2 Security Group
 resource "aws_security_group" "web_sg" {
   name        = "web_security_group"
   description = "Allow HTTP from ALB and SSH from anywhere"
@@ -129,7 +132,7 @@ resource "aws_security_group" "web_sg" {
   }
 }
 
-# Security Group for RDS Instance
+## RDS Security Group
 resource "aws_security_group" "rds_sg" {
   name        = "rds_security_group"
   description = "Allow MySQL access from EC2 instances"
@@ -156,17 +159,18 @@ resource "aws_security_group" "rds_sg" {
   }
 }
 
-# RDS Subnet Group
+# RDS
+## RDS Subnet Group
 resource "aws_db_subnet_group" "default" {
   name       = "main_subnet_group"
-  subnet_ids = [for subnet in aws_subnet.private : subnet.id]
+  subnet_ids = aws_subnet.private[*].id
 
   tags = {
     Name = "Main subnet group"
   }
 }
 
-# RDS Instance
+## RDS Instance
 resource "aws_db_instance" "mysql" {
   allocated_storage      = 20
   engine                 = "mysql"
@@ -201,37 +205,35 @@ resource "aws_s3_bucket" "app_bucket" {
   }
 }
 
-# IAM Role for EC2 Instance
-# IAM Role for EC2 Instance
+# IAM Roles and Policies
+## IAM Role for EC2 Instance
 resource "aws_iam_role" "ec2_role" {
   name = "ec2_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Effect = "Allow",
-      Principal = {
-        Service = "ec2.amazonaws.com"
-      },
-      Action = "sts:AssumeRole"
+      Effect    = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" },
+      Action    = "sts:AssumeRole"
     }]
   })
 }
 
-# IAM Policy for EC2 to Access S3
+## IAM Policy for EC2 to Access S3
 resource "aws_iam_policy" "ec2_s3_policy" {
   name        = "ec2_s3_policy"
   description = "Policy for EC2 to access S3"
   policy      = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Action = [
+      Effect   = "Allow",
+      Action   = [
         "s3:PutObject",
         "s3:GetObject",
         "s3:DeleteObject",
         "s3:ListBucket"
       ],
-      Effect   = "Allow",
       Resource = [
         aws_s3_bucket.app_bucket.arn,
         "${aws_s3_bucket.app_bucket.arn}/*"
@@ -240,21 +242,24 @@ resource "aws_iam_policy" "ec2_s3_policy" {
   })
 }
 
-# IAM Policy for EC2 to Invoke Lambda
+## IAM Policy for EC2 to Invoke Lambda
 resource "aws_iam_policy" "ec2_lambda_invoke_policy" {
   name        = "ec2_lambda_invoke_policy"
   description = "Policy for EC2 to invoke Lambda functions"
   policy      = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Action   = "lambda:InvokeFunction",
       Effect   = "Allow",
-      Resource = aws_lambda_function.welcome_email.arn
+      Action   = "lambda:InvokeFunction",
+      Resource = [
+        aws_lambda_function.welcome_email.arn,
+        aws_lambda_function.csv_handler.arn
+      ]
     }]
   })
 }
 
-# Attach Policies to EC2 Role
+## Attach Policies to EC2 Role
 resource "aws_iam_role_policy_attachment" "ec2_s3_policy_attachment" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = aws_iam_policy.ec2_s3_policy.arn
@@ -265,7 +270,7 @@ resource "aws_iam_role_policy_attachment" "ec2_lambda_invoke_policy_attachment" 
   policy_arn = aws_iam_policy.ec2_lambda_invoke_policy.arn
 }
 
-# Instance Profile for EC2 Instance
+## Instance Profile for EC2 Instance
 resource "aws_iam_instance_profile" "ec2_instance_profile" {
   name = "ec2_instance_profile"
   role = aws_iam_role.ec2_role.name
@@ -279,7 +284,7 @@ resource "aws_instance" "app_server" {
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
   key_name                    = aws_key_pair.deployer.key_name
   associate_public_ip_address = true
-  iam_instance_profile        = aws_iam_instance_profile.ec2_instance_profile.name  # Attached IAM Instance Profile
+  iam_instance_profile        = aws_iam_instance_profile.ec2_instance_profile.name
 
   tags = {
     Name = "AppServer"
@@ -329,20 +334,21 @@ resource "aws_instance" "app_server" {
   EOF
 }
 
-# Application Load Balancer (ALB)
+# Load Balancer and Target Groups
+## Application Load Balancer (ALB)
 resource "aws_lb" "app_lb" {
   name               = "app-load-balancer"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
-  subnets            = [for subnet in aws_subnet.public : subnet.id]
+  subnets            = aws_subnet.public[*].id
 
   tags = {
     Name = "AppLoadBalancer"
   }
 }
 
-# Target Group
+## Target Group
 resource "aws_lb_target_group" "app_tg" {
   name     = "app-target-group"
   port     = 80
@@ -364,7 +370,7 @@ resource "aws_lb_target_group" "app_tg" {
   }
 }
 
-# ALB Listener
+## ALB Listener
 resource "aws_lb_listener" "http_listener" {
   load_balancer_arn = aws_lb.app_lb.arn
   port              = "80"
@@ -376,71 +382,127 @@ resource "aws_lb_listener" "http_listener" {
   }
 }
 
-# Target Group Attachment
+## Target Group Attachment
 resource "aws_lb_target_group_attachment" "app_instance" {
   target_group_arn = aws_lb_target_group.app_tg.arn
   target_id        = aws_instance.app_server.id
   port             = 80
 }
 
-# IAM Role for Lambda Function
+# IAM Roles and Policies for Lambda Functions
+## IAM Role for Lambda Functions
 resource "aws_iam_role" "lambda_role" {
-  name = "lambda_ses_role"
+  name = "lambda_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Action    = "sts:AssumeRole",
       Effect    = "Allow",
-      Principal = {
-        Service = "lambda.amazonaws.com"
-      }
+      Principal = { Service = "lambda.amazonaws.com" },
+      Action    = "sts:AssumeRole"
     }]
   })
 }
 
-# IAM Policy for Lambda to Send Emails via SES
+## IAM Policy for Lambda to Send Emails via SES
 resource "aws_iam_policy" "lambda_ses_policy" {
   name        = "lambda_ses_policy"
   description = "Policy for Lambda to send emails via SES"
   policy      = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Action = [
+      Effect   = "Allow",
+      Action   = [
         "ses:SendEmail",
         "ses:SendRawEmail"
       ],
-      Effect   = "Allow",
       Resource = "*"
     }]
   })
 }
 
-# Attach Policy to Lambda Role
-resource "aws_iam_role_policy_attachment" "lambda_role_policy_attachment" {
+## IAM Policy for Lambda to Access S3
+resource "aws_iam_policy" "lambda_s3_policy" {
+  name        = "lambda_s3_policy"
+  description = "Policy for Lambda to access S3 bucket"
+  policy      = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Effect   = "Allow",
+      Action   = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      Resource = [
+        aws_s3_bucket.app_bucket.arn,
+        "${aws_s3_bucket.app_bucket.arn}/*"
+      ]
+    }]
+  })
+}
+
+## Attach Policies to Lambda Role
+resource "aws_iam_role_policy_attachment" "lambda_ses_policy_attachment" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = aws_iam_policy.lambda_ses_policy.arn
 }
 
-# Lambda Function
+resource "aws_iam_role_policy_attachment" "lambda_s3_policy_attachment" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = aws_iam_policy.lambda_s3_policy.arn
+}
+
+## AWS Managed Policy for Lambda Basic Execution
+resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# Lambda Functions
+## Existing Lambda Function
 resource "aws_lambda_function" "welcome_email" {
   function_name = "welcome_email_function"
   role          = aws_iam_role.lambda_role.arn
   handler       = "lambda_function.lambda_handler"
-  runtime       = "python3.9"  # Update to a supported version
+  runtime       = "python3.9"
   filename      = "lambda_function.zip"
 
-  # Environment Variables
   environment {
     variables = {
       SENDER_EMAIL = var.sender_email
     }
   }
 
-  depends_on = [aws_iam_role_policy_attachment.lambda_role_policy_attachment]
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_ses_policy_attachment,
+    aws_iam_role_policy_attachment.lambda_basic_execution
+  ]
 }
 
-# Output the Load Balancer DNS Name
+## New Lambda Function
+resource "aws_lambda_function" "csv_handler" {
+  function_name = "csv_handler_function"
+  role          = aws_iam_role.lambda_role.arn
+  handler       = "lambda_function.lambda_handler"
+  runtime       = "python3.9"
+  filename      = "lambda_function2.zip"
+
+  environment {
+    variables = {
+      S3_BUCKET = aws_s3_bucket.app_bucket.bucket
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_s3_policy_attachment,
+    aws_iam_role_policy_attachment.lambda_basic_execution
+  ]
+}
+
+# Outputs
+## Output the Load Balancer DNS Name
 output "load_balancer_dns_name" {
   value = aws_lb.app_lb.dns_name
 }
