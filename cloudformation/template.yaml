@@ -1,0 +1,513 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template equivalent to the provided Terraform code.'
+
+Parameters:
+  DbUsername:
+    Type: String
+    Default: admin
+    Description: RDS database username.
+  DbPassword:
+    Type: String
+    NoEcho: true
+    Default: Strong_password
+    Description: RDS database password.
+  PublicKeyMaterial:
+    Type: String
+    Description: SSH public key material for EC2 Key Pair.
+    Default: 'ssh-rsa X your-public-key ...'
+  S3BucketName:
+    Type: String
+    Default: s3bucketpollapp
+    Description: Name of the S3 bucket.
+  SenderEmail:
+    Type: String
+    Default: x@gmail.com
+    Description: Email address used by Lambda functions to send emails.
+  KeyPairName:
+    Type: String
+    Default: deployer_key
+    Description: Name of the EC2 Key Pair.
+  AWSRegion:
+    Type: AWS::Region
+    Description: AWS Region
+
+Resources:
+
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      Tags:
+      - Key: Name
+        Value: main_vpc
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: main_igw
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets
+  SubnetPublicA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.0.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: public_subnet_0
+
+  SubnetPublicB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.1.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+      - Key: Name
+        Value: public_subnet_1
+
+  # Private Subnets
+  SubnetPrivateA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.2.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+      - Key: Name
+        Value: private_subnet_0
+
+  SubnetPrivateB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.1.3.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      Tags:
+      - Key: Name
+        Value: private_subnet_1
+
+  # Route Table and Routes
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: public_route_table
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Route Table Associations
+  PublicSubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetPublicA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetPublicB
+      RouteTableId: !Ref PublicRouteTable
+
+  # Security Groups
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: alb_security_group
+      GroupDescription: Allow inbound HTTP traffic
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+        Description: HTTP from anywhere
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        FromPort: 0
+        ToPort: 0
+        CidrIp: 0.0.0.0/0
+        Description: Allow all outbound traffic
+      Tags:
+      - Key: Name
+        Value: alb_security_group
+
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: web_security_group
+      GroupDescription: Allow HTTP from ALB and SSH from anywhere
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        SourceSecurityGroupId: !Ref ALBSecurityGroup
+        Description: Allow HTTP from ALB
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0 # Replace with your IP for better security
+        Description: Allow SSH
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        FromPort: 0
+        ToPort: 0
+        CidrIp: 0.0.0.0/0
+        Description: Allow all outbound traffic
+      Tags:
+      - Key: Name
+        Value: web_security_group
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: rds_security_group
+      GroupDescription: Allow MySQL access from EC2 instances
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !Ref WebSecurityGroup
+        Description: Allow MySQL from EC2
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        FromPort: 0
+        ToPort: 0
+        CidrIp: 0.0.0.0/0
+        Description: Allow all outbound traffic
+      Tags:
+      - Key: Name
+        Value: rds_security_group
+
+  # RDS Subnet Group
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Main subnet group
+      SubnetIds:
+      - !Ref SubnetPrivateA
+      - !Ref SubnetPrivateB
+      Tags:
+      - Key: Name
+        Value: Main subnet group
+
+  # RDS Instance
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      EngineVersion: '8.0'
+      MasterUsername: !Ref DbUsername
+      MasterUserPassword: !Ref DbPassword
+      DBName: mydatabase
+      VPCSecurityGroups:
+      - !GetAtt RDSSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      PubliclyAccessible: false
+      DeletionProtection: false
+      Tags:
+      - Key: Name
+        Value: MySQL RDS Instance
+
+  # EC2 Key Pair
+  DeployerKey:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Ref KeyPairName
+      PublicKeyMaterial: !Ref PublicKeyMaterial
+
+  # S3 Bucket
+  AppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      Tags:
+      - Key: Name
+        Value: AppBucket
+
+  # IAM Role for EC2
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ec2_role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+
+  # IAM Policy for EC2 to Access S3
+  EC2S3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ec2_s3_policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - s3:PutObject
+          - s3:GetObject
+          - s3:DeleteObject
+          - s3:ListBucket
+          Resource:
+          - !GetAtt AppBucket.Arn
+          - !Join [ '', [ !GetAtt AppBucket.Arn, '/*' ] ]
+      Roles:
+      - !Ref EC2Role
+
+  # IAM Policy for EC2 to Invoke Lambda
+  EC2LambdaInvokePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ec2_lambda_invoke_policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: lambda:InvokeFunction
+          Resource:
+          - !GetAtt WelcomeEmailLambdaFunction.Arn
+          - !GetAtt CSVHandlerLambdaFunction.Arn
+      Roles:
+      - !Ref EC2Role
+
+  # IAM Instance Profile for EC2
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: ec2_instance_profile
+      Roles:
+      - !Ref EC2Role
+
+  # EC2 Instance
+  AppServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0c351fa00a7272d82 # Ensure this AMI is correct for your region
+      InstanceType: t3.micro
+      SubnetId: !Ref SubnetPublicA
+      SecurityGroupIds:
+      - !GetAtt WebSecurityGroup.GroupId
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Tags:
+      - Key: Name
+        Value: AppServer
+      UserData:
+        'Fn::Base64': !Sub |
+          #!/bin/bash
+          # Update and install necessary packages
+          yum update -y
+          yum install -y python3 git mysql unzip
+
+          # Install pip and Python dependencies
+          if ! command -v pip3 &> /dev/null; then
+            curl -O https://bootstrap.pypa.io/get-pip.py
+            python3 get-pip.py
+          fi
+          pip3 install --upgrade pip
+          pip3 install flask pymysql bcrypt gunicorn boto3 flask-session flask-bcrypt python-dotenv
+
+          # Install AWS CLI
+          if ! command -v aws &> /dev/null; then
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+          fi
+
+          # Clone your application repository
+          cd /home/ec2-user
+          if [ ! -d "pollAppToAWS" ]; then
+            git clone https://github.com/CVTPRN/pollAppToAWS.git
+          fi
+          cd pollAppToAWS
+
+          # Export environment variables
+          export DB_HOST=${RDSInstance.Endpoint.Address}
+          export DB_USER=${DbUsername}
+          export DB_PASSWORD=${DbPassword}
+          export DB_NAME=mydatabase
+          export SECRET_KEY=your_secret_key
+          export S3_BUCKET=${S3BucketName}
+          export AWS_DEFAULT_REGION=${AWS::Region}
+
+          # Start the application using Gunicorn
+          gunicorn --workers 3 --bind 0.0.0.0:80 app:app &
+
+          echo "Application started successfully."
+
+  # Application Load Balancer
+  AppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: app-load-balancer
+      Scheme: internet-facing
+      Type: application
+      SecurityGroups:
+      - !GetAtt ALBSecurityGroup.GroupId
+      Subnets:
+      - !Ref SubnetPublicA
+      - !Ref SubnetPublicB
+      Tags:
+      - Key: Name
+        Value: AppLoadBalancer
+
+  # Target Group
+  AppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: app-target-group
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: 200-399
+      TargetType: instance
+      Tags:
+      - Key: Name
+        Value: AppTargetGroup
+
+  # ALB Listener
+  AppListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref AppLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref AppTargetGroup
+
+  # Target Group Attachment
+  AppTargetGroupAttachment:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
+    Properties:
+      TargetGroupArn: !Ref AppTargetGroup
+      TargetId: !Ref AppServer
+      Port: 80
+
+  # IAM Role for Lambda Functions
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lambda_role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+
+  # IAM Policy for Lambda to Send Emails via SES
+  LambdaSESPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: lambda_ses_policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - ses:SendEmail
+          - ses:SendRawEmail
+          Resource: '*'
+      Roles:
+      - !Ref LambdaRole
+
+  # IAM Policy for Lambda to Access S3
+  LambdaS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: lambda_s3_policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - s3:GetObject
+          - s3:PutObject
+          - s3:DeleteObject
+          - s3:ListBucket
+          Resource:
+          - !GetAtt AppBucket.Arn
+          - !Join [ '', [ !GetAtt AppBucket.Arn, '/*' ] ]
+      Roles:
+      - !Ref LambdaRole
+
+  # AWS Managed Policy for Lambda Basic Execution
+  LambdaBasicExecutionPolicyAttachment:
+    Type: AWS::IAM::RolePolicyAttachment
+    Properties:
+      RoleName: !Ref LambdaRole
+      PolicyArn: arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Lambda Function: Welcome Email
+  WelcomeEmailLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: welcome_email_function
+      Role: !GetAtt LambdaRole.Arn
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.9
+      Code:
+        S3Bucket: your-s3-bucket-for-lambda-code
+        S3Key: lambda_function.zip
+      Environment:
+        Variables:
+          SENDER_EMAIL: !Ref SenderEmail
+      DependsOn:
+      - LambdaSESPolicy
+
+  # Lambda Function: CSV Handler
+  CSVHandlerLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: csv_handler_function
+      Role: !GetAtt LambdaRole.Arn
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.9
+      Code:
+        S3Bucket: your-s3-bucket-for-lambda-code
+        S3Key: lambda_function2.zip
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref S3BucketName
+      DependsOn:
+      - LambdaS3Policy
+
+Outputs:
+  LoadBalancerDNSName:
+    Description: The DNS name of the load balancer
+    Value: !GetAtt AppLoadBalancer.DNSName
